@@ -1,0 +1,248 @@
+----
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/plane-data.csv" AS planes
+CREATE (p:Plane{tailnum: planes.tailnum, model: planes.model, engine_type: planes.engine_type})
+--
+CREATE INDEX ON :Plane(tailnum)
+--
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/airports.csv" AS airport
+CREATE (a:Airport {code: airport.iata, name:airport.airport, city: airport.city, state: airport.state, country: airport.country, lat: airport.lat, long: airport.long})
+--
+CREATE INDEX ON :Airport(code)
+--
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/carriers.csv" AS carriers
+CREATE (c:Carrier{code: carriers.Code, name: carriers.Description})
+---
+CREATE INDEX ON :Carrier(code)
+---
+# Flights
+# for every x 1-12 for every year
+USING PERIODIC COMMIT 4000
+LOAD CSV WITH HEADERS FROM "file:///dataset/2014/On_Time_On_Time_Performance_2014_X.csv" AS ontime WITH ontime
+WITH ontime
+CREATE (f:Flight{date: ontime.FlightDate, carrier: ontime.UniqueCarrier, airlineID: ontime.AirlineID, tailnum: ontime.TailNum, 
+origAirportCode: ontime.Origin, destAirportCode: ontime.Dest, takeoffDelayed: toInteger(ontime.DepDelayMinutes), arrivalDelayed: toInteger(ontime.ArrDelayMinutes), 
+taxiIn: ontime.TaxiIn, taxiOut: ontime.TaxiOut, cancelled: ontime.Cancelled, cancellationCode: ontime.CancellationCode, distance: TOFLOAT(ontime.Distance)})
+---
+USING PERIODIC COMMIT 4000
+LOAD CSV WITH HEADERS FROM "file:///dataset/2015/On_Time_On_Time_Performance_2015_X.csv" AS ontime WITH ontime
+WITH ontime
+CREATE (f:Flight{date: ontime.FlightDate, carrier: ontime.UniqueCarrier, airlineID: ontime.AirlineID, tailnum: ontime.TailNum, 
+origAirportCode: ontime.Origin, destAirportCode: ontime.Dest, takeoffDelayed: toInteger(ontime.DepDelayMinutes), arrivalDelayed: toInteger(ontime.ArrDelayMinutes), 
+taxiIn: ontime.TaxiIn, taxiOut: ontime.TaxiOut, cancelled: ontime.Cancelled, cancellationCode: ontime.CancellationCode, distance: TOFLOAT(ontime.Distance)})
+---
+USING PERIODIC COMMIT 4000
+LOAD CSV WITH HEADERS FROM "file:///dataset/2016/On_Time_On_Time_Performance_2016_X.csv" AS ontime WITH ontime
+WITH ontime
+CREATE (f:Flight{date: ontime.FlightDate, carrier: ontime.UniqueCarrier, airlineID: ontime.AirlineID, tailnum: ontime.TailNum, 
+origAirportCode: ontime.Origin, destAirportCode: ontime.Dest, takeoffDelayed: toInteger(ontime.DepDelayMinutes), arrivalDelayed: toInteger(ontime.ArrDelayMinutes), 
+taxiIn: ontime.TaxiIn, taxiOut: ontime.TaxiOut, cancelled: ontime.Cancelled, cancellationCode: ontime.CancellationCode, distance: TOFLOAT(ontime.Distance)})
+---
+CREATE INDEX ON :Flight(origAirportCode)
+--
+CREATE INDEX ON :Flight(destAirportCode)
+--
+CREATE INDEX ON :Flight(carrier)
+---
+#Relationships
+---
+MATCH (f:Flight)
+WITH f
+MATCH (c:Carrier) 
+WHERE f.carrier = c.code
+CREATE (f)-[r:is_issued_by_carrier]->(c);
+--
+MATCH (f:Flight)
+WITH f
+MATCH (a:Airport) 
+WHERE f.origAirportCode = a.code
+CREATE (f)-[r:origin]->(a);
+--
+MATCH (f:Flight)
+WITH f
+MATCH (a:Airport) 
+WHERE f.destAirportCode = a.code
+CREATE (f)-[r:destination]->(a);
+--
+MATCH (f:Flight)
+WITH f
+MATCH (p:Plane) 
+WHERE f.tailnum = p.tailnum
+CREATE (f)-[r:plane]->(p);
+--
+# Fuel data
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/monthly-fuel-statistics-2014.csv" AS fuel WITH fuel
+CREATE (f:FuelStat{year: fuel.YEAR, month: TOINT(fuel.MONTH), carrier: fuel.UNIQUE_CARRIER, totalCost: fuel.TOTAL_COST, gallons: fuel.TOTAL_GALLONS})
+---
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/monthly-fuel-statistics-2015.csv" AS fuel WITH fuel
+CREATE (f:FuelStat{year: fuel.YEAR, month: TOINT(fuel.MONTH), carrier: fuel.UNIQUE_CARRIER, totalCost: fuel.TOTAL_COST, gallons: fuel.TOTAL_GALLONS})
+---
+USING PERIODIC COMMIT 500
+LOAD CSV WITH HEADERS FROM "file:///dataset/Additional_Data/monthly-fuel-statistics-2016.csv" AS fuel WITH fuel
+CREATE (f:FuelStat{year: fuel.YEAR, month: TOINT(fuel.MONTH), carrier: fuel.UNIQUE_CARRIER, totalCost: fuel.TOTAL_COST, gallons: fuel.TOTAL_GALLONS})
+---
+CREATE INDEX ON :FuelStat(carrier)
+---
+MATCH (c:Carrier)
+WITH c
+MATCH (f:FuelStat) 
+WHERE c.code = f.carrier
+CREATE (c)-[:has_fuel_usage]->(f);
+---
+# Precompute flight relationships (for shortest path)
+MATCH (a1:Airport)<-[:origin]-(f:Flight)->[:destination](a2:Airport)
+CREATE (a1)-[fl:flight {tailnum: f.tailnum, carrier: f.carrier, distance: f.distance, time: f.elapsedTime, delay: f.arrivalDelayed + f.takeoffDelayed}]->(a2)
+---
+Q2
+---
+A:
+1.
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2014.*'
+RETURN COUNT(*) as flights2014
+
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2015.*'
+RETURN COUNT(*) as flights2015
+
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2016.*'
+RETURN COUNT(*) as flights2016
+
+2.
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2014.*'
+WITH f.tailnum AS tailnum
+RETURN COUNT(DISTINCT tailnum) as uniquePlanesPerYear
+
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2015.*'
+WITH f.tailnum AS tailnum
+RETURN COUNT(DISTINCT tailnum) as uniquePlanesPerYear
+
+MATCH (f:Flight)
+WITH f
+WHERE f.date =~ '2016.*'
+WITH f.tailnum AS tailnum
+RETURN COUNT(DISTINCT tailnum) as uniquePlanesPerYear
+
+3.
+MATCH (a:Airport)-[r:origin]->(x)
+RETURN a AS Airport, COUNT(r) AS FlightCount
+ORDER BY COUNT(r) DESC
+LIMIT 1
+
+4.
+MATCH(c:Carrier)
+RETURN COUNT(*) AS CarrierCount
+
+B:
+1.
+MATCH (c:Carrier)-[r:has_fuel_usage]->(f:FuelStat)
+WHERE f.year = "2014"
+RETURN f.year AS Year, c AS Carrier, SUM(TOFLOAT(f.gallons)) AS Gallons, SUM(TOFLOAT(f.totalCost)) AS USD
+ORDER BY Gallons DESC
+LIMIT 3
+
+MATCH (c:Carrier)-[r:has_fuel_usage]->(f:FuelStat)
+WHERE f.year = "2015"
+RETURN f.year AS Year, c AS Carrier, SUM(TOFLOAT(f.gallons)) AS Gallons, SUM(TOFLOAT(f.totalCost)) AS USD
+ORDER BY Gallons DESC
+LIMIT 3
+
+MATCH (c:Carrier)-[r:has_fuel_usage]->(f:FuelStat)
+WHERE f.year = "2016"
+RETURN f.year AS Year, c AS Carrier, SUM(TOFLOAT(f.gallons)) AS Gallons, SUM(TOFLOAT(f.totalCost)) AS USD
+ORDER BY Gallons DESC
+LIMIT 3
+
+2.
+MATCH(c:Carrier)
+WITH c
+MATCH (f)-[r:is_issued_by_carrier]->(c)
+WHERE f.date =~ "2014.*"
+RETURN "2014" AS Year, c.name as Carrier, COUNT(f) as Flights
+ORDER BY COUNT(f) DESC
+LIMIT 5
+---
+MATCH(c:Carrier)
+WITH c
+MATCH (f)-[r:is_issued_by_carrier]->(c)
+WHERE f.date =~ "2015.*"
+RETURN "2014" AS Year, c.name as Carrier, COUNT(f) as Flights
+ORDER BY COUNT(f) DESC
+LIMIT 5
+---
+MATCH(c:Carrier)
+WITH c
+MATCH (f)-[r:is_issued_by_carrier]->(c)
+WHERE f.date =~ "2016.*"
+RETURN "2014" AS Year, c.name as Carrier, COUNT(f) as Flights
+ORDER BY COUNT(f) DESC
+LIMIT 5
+
+c) maybe aggregate in one query, for each year all the engines
+MATCH (f:Flight)-[r:plane]->(p:Plane)
+WHERE f.date =~ "2014.*"
+RETURN "2014" AS Year, p.engine_type AS EngineType, COUNT(f) AS Flights, SUM(TOFLOAT(f.distance)) AS Distance
+ORDER BY p.engine_type
+--
+MATCH (f:Flight)-[r:plane]->(p:Plane)
+WHERE f.date =~ "2015.*"
+RETURN "2014" AS Year, p.engine_type AS EngineType, COUNT(f) AS Flights, SUM(TOFLOAT(f.distance)) AS Distance
+ORDER BY p.engine_type
+---
+MATCH (f:Flight)-[r:plane]->(p:Plane)
+WHERE f.date =~ "2016.*"
+RETURN "2014" AS Year, p.engine_type AS EngineType, COUNT(f) AS Flights, SUM(TOFLOAT(f.distance)) AS Distance
+ORDER BY p.engine_type
+
+d)
+1.
+MATCH (a:Airport)<-[r:origin]-(f:Flight)
+RETURN a AS Airport, SUM(TOFLOAT(f.taxiIn)) AS TaxiIN
+ORDER BY TaxiIN DESC
+LIMIT 1
+---
+MATCH (a:Airport)<-[r:destination]-(f:Flight)
+RETURN a AS Airport, SUM(TOFLOAT(f.taxiOut)) AS TaxiOUT
+ORDER BY TaxiOUT DESC
+LIMIT 1
+---
+2.
+
+e)
+2. #Planes
+MATCH p=shortestPath((a:Airport {code: "ADK"})-[f:flight*1..2]->(b:Airport {code: "BGR"}))
+WITH extract(r IN relationships(p)| r.tailnum) AS extracted
+MATCH (p:Plane)
+WHERE ANY(x IN extracted WHERE x = p.tailnum)
+RETURN DISTINCT p.model
+
+#Carriers
+MATCH p=shortestPath((a:Airport {code: "ADK"})-[f:flight*]->(b:Airport {code: "BGR"}))
+WITH extract(r IN relationships(p)| r.carrier) AS extracted
+MATCH (c:Carrier)
+WHERE ANY(x IN extracted WHERE x = c.code)
+RETURN DISTINCT c.name
+
+3. #Distance
+MATCH p=shortestPath((a:Airport {code: "ABE"})-[f:flight*]->(b:Airport {code: "MIA"}))
+RETURN reduce(distance = 0.0, r IN relationships(p)| distance + TOFLOAT(r.distance)) AS reduction
+
+4. #Time
+MATCH p=shortestPath((a:Airport {code: "ADK"})-[f:flight*]->(b:Airport {code: "BGR"}))
+RETURN reduce(duration = 0, r IN relationships(p)| duration + TOFLOAT(r.duration)) AS reduction
+
+5. # Avg delay
+MATCH p=shortestPath((a:Airport {code: "ADK"})-[f:flight*]->(b:Airport {code: "BGR"}))
+RETURN avg(reduce(delay = 0, r IN relationships(p)| delay + TOFLOAT(r.delay))) AS AvgDelay
